@@ -45,17 +45,18 @@ function getDayInfo() {
   return { isFriday: d === 5, isSaturday: d === 6, isSunday: d === 0, isWeekend: d === 6 || d === 0 };
 }
 function calcScore(a) {
-  const hydration = a.agua === "sim" ? 100 : 0;
-  const nutrition = a.plano === "sim" ? 100 : 0;
-  const sleepTime  = { "7a9": 100, menos7: 35, mais9: 35 }[a.horasDormir] ?? 50;
-  const sleepStart = { ate22: 100, "22meia": 60, apos: 15 }[a.inicioSono]  ?? 50;
-  const sleepCont  = a.dormidoDireto === "sim" ? 100 : 35;
-  const sleep = Math.round((sleepTime + sleepStart + sleepCont) / 3);
-  const m  = { zero: 0, menos3: 40, "3x": 72, mais3: 100 }[a.musculacao] ?? 0;
-  const c  = { zero: 0, menos3: 40, "3x": 72, mais3: 100 }[a.aerobico]   ?? 0;
-  const im = { leve: 0.8, moderada: 1.0, intensa: 1.15 }[a.intensidade]   ?? 0.9;
-  const training = Math.min(100, Math.round(((m + c) / 2) * im));
-  return { hydration, nutrition, sleep, training, overall: Math.round((hydration + nutrition + sleep + training) / 4) };
+  const sc = { melhor:100, igual:50, pior:0, folgada:100, igual_r:50, apertada:0, firme:100, igual_c:50, flacido:0 };
+  const roupa      = { folgada:100, igual:50, apertada:0 }[a.roupa]      ?? 50;
+  const corpo      = { firme:100,   igual:50, flacido:0  }[a.corpo]      ?? 50;
+  const energia    = { melhor:100,  igual:50, pior:0     }[a.energia]    ?? 50;
+  const disposicao = { melhor:100,  igual:50, pior:0     }[a.disposicao] ?? 50;
+  const clareza    = { melhor:100,  igual:50, pior:0     }[a.clareza]    ?? 50;
+  const sono       = { melhor:100,  igual:50, pior:0     }[a.sono]       ?? 50;
+  const consist    = (parseInt(a.consistencia) || 0) * 10;
+  const composicao = Math.round((roupa + corpo) / 2);
+  const bemestar   = Math.round((energia + disposicao + clareza + sono) / 4);
+  const overall    = Math.round((composicao + bemestar + consist) / 3);
+  return { composicao, bemestar, consist, overall };
 }
 
 // ─── Atoms ───────────────────────────────────────────────────────────────────
@@ -793,7 +794,7 @@ function HomeTab({ lastScore, onTabNav }) {
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:10 }}>Score da semana</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                  {[["💧",lastScore.hydration],["🥩",lastScore.nutrition],["😴",lastScore.sleep],["🏋️",lastScore.training]].map(([e,v],i) => (
+                  {[["👗",lastScore.composicao],["⚡",lastScore.bemestar],["🎯",lastScore.consist]].map(([e,v],i) => (
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <span style={{ fontSize:12 }}>{e}</span>
                       <div style={{ flex:1, height:4, background:C.border, borderRadius:99 }}>
@@ -857,75 +858,112 @@ const PILLAR = {
   musculacao:"🏋️ Treino", aerobico:"🏋️ Treino", intensidade:"🏋️ Treino",
   suplementos:"💊 Suplementos", medicacoes:"💊 Medicações", ajuda:"💬 Feedback",
 };
-const ALL_STEPS = ["agua","plano","dificuldade","apetite","coco","papel","inicioSono","horasDormir","dormidoDireto","musculacao","aerobico","intensidade","suplementos","medicacoes","ajuda"];
-const SUPLS = ["Whey Protein","Creatina","Glutamina","Ômega 3"];
+const ALL_STEPS = ["peso","circunferencias","roupa","corpo","energia","disposicao","clareza","sono","consistencia","vitoria","dificuldade"];
 
 function stepRequired(id, a) {
-  const map = { agua:a.agua, plano:a.plano, apetite:a.apetite, coco:a.coco, papel:a.papel,
-    inicioSono:a.inicioSono, horasDormir:a.horasDormir, dormidoDireto:a.dormidoDireto,
-    musculacao:a.musculacao, aerobico:a.aerobico, intensidade:a.intensidade };
-  return id in map ? map[id] !== null : true;
+  const optional = ["vitoria","dificuldade"];
+  if (optional.includes(id)) return true;
+  const needs = { peso:a.peso, roupa:a.roupa, corpo:a.corpo, energia:a.energia,
+    disposicao:a.disposicao, clareza:a.clareza, sono:a.sono, consistencia:a.consistencia !== null };
+  return id in needs ? needs[id] !== null && needs[id] !== "" : true;
 }
 
-function StepContent({ id, a, set, toggle }) {
+function StepContent({ id, a, set }) {
+  const triOpts = (key, opts) => (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {opts.map(([v,label,sub,col]) => (
+        <Opt key={v} label={label} sub={sub} sel={a[key]===v} onClick={()=>set(key,v)}
+          accent={col || (v==="melhor"||v==="folgada"||v==="firme" ? C.green : v==="pior"||v==="apertada"||v==="flacido" ? C.red : C.gold)} />
+      ))}
+    </div>
+  );
   switch (id) {
-    case "agua": return (<><Q>Você bateu sua meta de consumo de água essa semana?</Q><YesNo value={a.agua} onChange={v=>set("agua",v)} /></>);
-    case "plano": return (<><Q>Você seguiu pelo menos 90% do seu plano alimentar?</Q><YesNo value={a.plano} onChange={v=>set("plano",v)} /></>);
-    case "dificuldade": return (<><Q>O que dificultou seguir 100% do plano?</Q><QSub>Opcional.</QSub><TA value={a.dificuldade} onChange={v=>set("dificuldade",v)} placeholder="Descreva livremente..." /></>);
-    case "apetite": return (<><Q>Comparado à semana passada, seu apetite:</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="📉 Reduziu" sel={a.apetite==="reduziu"} onClick={()=>set("apetite","reduziu")} />
-      <Opt label="➡️ Se manteve controlado" sel={a.apetite==="controlado"} onClick={()=>set("apetite","controlado")} />
-      <Opt label="📈 Aumentou" sel={a.apetite==="aumentou"} onClick={()=>set("apetite","aumentou")} />
-    </div></>);
-    case "coco": return (<><Q>Você fez cocô pelo menos 1 vez por dia essa semana?</Q><YesNo value={a.coco} onChange={v=>set("coco",v)} /></>);
-    case "papel": return (<><Q>Ao se limpar, o papel higiênico ficou:</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="✅ Não ficou sujo" sel={a.papel==="limpo"} onClick={()=>set("papel","limpo")} />
-      <Opt label="⚠️ Ficou pouco sujo" sel={a.papel==="pouco"} onClick={()=>set("papel","pouco")} />
-      <Opt label="🔴 Ficou muito sujo" sel={a.papel==="muito"} onClick={()=>set("papel","muito")} />
-    </div></>);
-    case "inicioSono": return (<><Q>Em qual horário você tem iniciado o sono?</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="🌙 Até as 22h" sub="Janela ideal de recuperação" sel={a.inicioSono==="ate22"} onClick={()=>set("inicioSono","ate22")} />
-      <Opt label="🕙 Entre 22h e meia-noite" sub="Aceitável" sel={a.inicioSono==="22meia"} onClick={()=>set("inicioSono","22meia")} />
-      <Opt label="🌅 Após meia-noite" sub="Impacta a recuperação" sel={a.inicioSono==="apos"} onClick={()=>set("inicioSono","apos")} />
-    </div></>);
-    case "horasDormir": return (<><Q>Quantas horas você tem dormido por noite?</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="⚡ Menos de 7h" sub="Abaixo do ideal" sel={a.horasDormir==="menos7"} onClick={()=>set("horasDormir","menos7")} />
-      <Opt label="✅ 7 a 9 horas" sub="Faixa ideal" sel={a.horasDormir==="7a9"} onClick={()=>set("horasDormir","7a9")} />
-      <Opt label="😴 Mais de 9h" sub="Pode indicar déficit acumulado" sel={a.horasDormir==="mais9"} onClick={()=>set("horasDormir","mais9")} />
-    </div></>);
-    case "dormidoDireto": return (<><Q>Você tem dormido sem interromper o sono?</Q><YesNo value={a.dormidoDireto} onChange={v=>set("dormidoDireto",v)} /></>);
-    case "musculacao": return (<><Q>Quantas sessões de musculação essa semana?</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="❌ Nenhuma" sel={a.musculacao==="zero"} onClick={()=>set("musculacao","zero")} />
-      <Opt label="⚡ Menos de 3 vezes" sel={a.musculacao==="menos3"} onClick={()=>set("musculacao","menos3")} />
-      <Opt label="✅ 3 vezes" sel={a.musculacao==="3x"} onClick={()=>set("musculacao","3x")} />
-      <Opt label="🔥 Mais de 3 vezes" sel={a.musculacao==="mais3"} onClick={()=>set("musculacao","mais3")} />
-    </div></>);
-    case "aerobico": return (<><Q>Quantas sessões de aeróbico essa semana?</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="❌ Nenhuma" sel={a.aerobico==="zero"} onClick={()=>set("aerobico","zero")} />
-      <Opt label="⚡ Menos de 3 vezes" sel={a.aerobico==="menos3"} onClick={()=>set("aerobico","menos3")} />
-      <Opt label="✅ 3 vezes" sel={a.aerobico==="3x"} onClick={()=>set("aerobico","3x")} />
-      <Opt label="🔥 Mais de 3 vezes" sel={a.aerobico==="mais3"} onClick={()=>set("aerobico","mais3")} />
-    </div></>);
-    case "intensidade": return (<><Q>Como foi a intensidade dos treinos?</Q><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      <Opt label="😌 Leve" sub="Sem esforço significativo" sel={a.intensidade==="leve"} onClick={()=>set("intensidade","leve")} />
-      <Opt label="💪 Moderada" sub="Dentro do planejado" sel={a.intensidade==="moderada"} onClick={()=>set("intensidade","moderada")} />
-      <Opt label="🔥 Intensa" sub="Desafiei meus limites" sel={a.intensidade==="intensa"} onClick={()=>set("intensidade","intensa")} />
-    </div></>);
-    case "suplementos": return (<><Q>Quais suplementos você está tomando?</Q><QSub>Selecione todos que se aplicam.</QSub>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {SUPLS.map(s => { const sel=a.suplementos.includes(s); return (
-          <button key={s} onClick={()=>toggle("suplementos",s)} style={{
-            padding:"14px 18px", borderRadius:14, cursor:"pointer",
-            background: sel ? C.gold+"18" : C.card, border:`2px solid ${sel ? C.gold : C.border}`,
-            color: sel ? C.gold : C.text, fontSize:15, fontWeight:600,
-            fontFamily:"inherit", textAlign:"left", display:"flex", alignItems:"center", gap:10, transition:"all 0.15s",
-          }}><span style={{fontSize:16}}>{sel?"☑":"☐"}</span>{s}</button>
-        );})}
-        <TA value={a.outrosSupl||""} onChange={v=>set("outrosSupl",v)} placeholder="Outros suplementos..." minHeight={56} />
+    case "peso": return (<>
+      <Q>Qual seu peso hoje?</Q>
+      <QSub>Em quilogramas (kg).</QSub>
+      <input type="number" step="0.1" value={a.peso||""} onChange={e=>set("peso",e.target.value)}
+        placeholder="Ex: 82,5" autoFocus
+        style={{ width:"100%", padding:"18px 20px", borderRadius:16, background:C.card, border:`2px solid ${C.border}`,
+          color:C.text, fontSize:22, fontWeight:700, outline:"none", fontFamily:"'Montserrat',sans-serif",
+          boxSizing:"border-box", textAlign:"center" }}
+        onFocus={e=>e.target.style.borderColor=C.gold}
+        onBlur={e=>e.target.style.borderColor=C.border}
+      />
+    </>);
+    case "circunferencias": return (<>
+      <Q>Suas circunferências</Q>
+      <QSub>Em centímetros. Deixe em branco se não mediu.</QSub>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {[["abdome","Abdome 🔵"],["quadril","Quadril 🟣"],["coxa","Coxa 🟡"]].map(([k,label])=>(
+          <div key={k}>
+            <div style={{fontSize:13,color:C.muted,fontWeight:600,marginBottom:6}}>{label}</div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <input type="number" step="0.1" value={a[k]||""} onChange={e=>set(k,e.target.value)}
+                placeholder="cm"
+                style={{ flex:1, padding:"14px 16px", borderRadius:13, background:C.card, border:`2px solid ${C.border}`,
+                  color:C.text, fontSize:18, fontWeight:700, outline:"none", fontFamily:"'Montserrat',sans-serif",
+                  textAlign:"center" }}
+                onFocus={e=>e.target.style.borderColor=C.gold}
+                onBlur={e=>e.target.style.borderColor=C.border}
+              />
+              <span style={{color:C.muted,fontSize:15,fontWeight:600}}>cm</span>
+            </div>
+          </div>
+        ))}
       </div>
     </>);
-    case "medicacoes": return (<><Q>Suas medicações e fórmulas manipuladas atuais.</Q><QSub>Deixe em branco se não houve alterações.</QSub><TA value={a.medicacoes} onChange={v=>set("medicacoes",v)} placeholder="Ex: Ozempic 0,5mg/semana..." minHeight={130} /></>);
-    case "ajuda": return (<><Q>Como o Dr. Filipe Leão poderia te ajudar mais?</Q><QSub>Opcional. Vai direto para o médico.</QSub><TA value={a.ajuda} onChange={v=>set("ajuda",v)} placeholder="Compartilhe livremente..." minHeight={130} /></>);
+    case "roupa": return (<>
+      <Q>Como está ficando sua roupa?</Q>
+      {triOpts("roupa",[["apertada","🔴 Mais apertada",null,C.red],["igual","➡️ Igual",null,C.gold],["folgada","✅ Mais folgada",null,C.green]])}
+    </>);
+    case "corpo": return (<>
+      <Q>Como você sente seu corpo?</Q>
+      {triOpts("corpo",[["flacido","🔴 Mais flácido",null,C.red],["igual","➡️ Igual",null,C.gold],["firme","💪 Mais firme",null,C.green]])}
+    </>);
+    case "energia": return (<>
+      <Q>Como está sua energia?</Q>
+      {triOpts("energia",[["pior","🔴 Pior",null,C.red],["igual","➡️ Igual",null,C.gold],["melhor","⚡ Melhor",null,C.green]])}
+    </>);
+    case "disposicao": return (<>
+      <Q>Sua disposição física:</Q>
+      {triOpts("disposicao",[["pior","🔴 Pior",null,C.red],["igual","➡️ Igual",null,C.gold],["melhor","🏃 Melhor",null,C.green]])}
+    </>);
+    case "clareza": return (<>
+      <Q>Sua clareza mental:</Q>
+      {triOpts("clareza",[["pior","🔴 Pior",null,C.red],["igual","➡️ Igual",null,C.gold],["melhor","🧠 Melhor",null,C.green]])}
+    </>);
+    case "sono": return (<>
+      <Q>Como está seu sono?</Q>
+      {triOpts("sono",[["pior","🔴 Pior",null,C.red],["igual","➡️ Igual",null,C.gold],["melhor","😴 Melhor",null,C.green]])}
+    </>);
+    case "consistencia": return (<>
+      <Q>Sua consistência nessa semana</Q>
+      <QSub>De 0 (não consegui nada) a 10 (semana perfeita).</QSub>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{fontFamily:"'Montserrat',sans-serif",fontSize:64,fontWeight:800,
+          color:a.consistencia!==null ? scoreColor(a.consistencia*10) : C.muted,lineHeight:1}}>
+          {a.consistencia !== null ? a.consistencia : "—"}
+        </div>
+        <div style={{fontSize:14,color:C.muted,marginTop:4}}>de 10</div>
+      </div>
+      <input type="range" min="0" max="10" step="1" value={a.consistencia ?? 5}
+        onChange={e=>set("consistencia",parseInt(e.target.value))}
+        style={{width:"100%",accentColor:C.gold,height:8,cursor:"pointer"}}
+      />
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.muted,marginTop:6}}>
+        <span>0</span><span>5</span><span>10</span>
+      </div>
+    </>);
+    case "vitoria": return (<>
+      <Q>Principal vitória da semana</Q>
+      <QSub>Qualquer conquista conta — por menor que pareça.</QSub>
+      <TA value={a.vitoria||""} onChange={v=>set("vitoria",v)} placeholder="Ex: Não cedi ao lanche da tarde nenhum dia..." minHeight={120} />
+    </>);
+    case "dificuldade": return (<>
+      <Q>Principal dificuldade da semana</Q>
+      <QSub>Seja honesto. Isso ajuda o Dr. Leão a ajustar seu acompanhamento.</QSub>
+      <TA value={a.dificuldade||""} onChange={v=>set("dificuldade",v)} placeholder="Ex: Fim de semana foi difícil de manter o plano..." minHeight={120} />
+    </>);
     default: return null;
   }
 }
@@ -934,7 +972,7 @@ function CheckInTab({ onScoreSaved, lastScore }) {
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
   const [completedThisWeek, setCompletedThisWeek] = useState(false);
-  const [a, setA] = useState({ agua:null, plano:null, dificuldade:"", apetite:null, coco:null, papel:null, inicioSono:null, horasDormir:null, dormidoDireto:null, musculacao:null, aerobico:null, intensidade:null, suplementos:[], outrosSupl:"", medicacoes:"", ajuda:"" });
+  const [a, setA] = useState({ peso:"", abdome:"", quadril:"", coxa:"", roupa:null, corpo:null, energia:null, disposicao:null, clareza:null, sono:null, consistencia:null, vitoria:"", dificuldade:"" });
 
   useEffect(() => {
     // Check if already completed this week (since last Friday)
@@ -950,166 +988,139 @@ function CheckInTab({ onScoreSaved, lastScore }) {
   }, []);
 
   const set = (k,v) => setA(p=>({...p,[k]:v}));
-  const toggle = (k,v) => setA(p=>({...p,[k]:p[k].includes(v)?p[k].filter(x=>x!==v):[...p[k],v]}));
-  const total = ALL_STEPS.length, curId = ALL_STEPS[step-1], score = calcScore(a);
+  const total = ALL_STEPS.length, curId = ALL_STEPS[step-1];
   const next = () => {
     if (step>=total) {
       setDone(true);
-      onScoreSaved(score);
+      onScoreSaved(calcScore(a));
       try { localStorage.setItem("checkin-last-date", new Date().toISOString()); } catch {}
       setCompletedThisWeek(true);
     } else setStep(s=>s+1);
   };
   const back = () => { if (done) setDone(false); else if (step>0) setStep(s=>s-1); };
-  const restart = () => { setStep(0); setDone(false); setCompletedThisWeek(false); setA({ agua:null, plano:null, dificuldade:"", apetite:null, coco:null, papel:null, inicioSono:null, horasDormir:null, dormidoDireto:null, musculacao:null, aerobico:null, intensidade:null, suplementos:[], outrosSupl:"", medicacoes:"", ajuda:"" }); };
+  const restart = () => { setStep(0); setDone(false); setCompletedThisWeek(false); setA({ peso:"", abdome:"", quadril:"", coxa:"", roupa:null, corpo:null, energia:null, disposicao:null, clareza:null, sono:null, consistencia:null, vitoria:"", dificuldade:"" }); };
 
   if (done) {
-    const { hydration, nutrition, sleep, training, overall } = score;
-    const isGreat=overall>=80, isOk=overall>=60;
-    const pillars=[{l:"Hidratação",v:hydration,e:"💧"},{l:"Alimentação",v:nutrition,e:"🥩"},{l:"Sono",v:sleep,e:"😴"},{l:"Treino",v:training,e:"🏋️"}];
-    const weakest = pillars.reduce((a,b) => b.v < a.v ? b : a);
-    const insightMap = {
-      Hidratação: "A hidratação é fundamental para o metabolismo. Tente carregar sempre uma garrafa de água visível — o que está à vista é mais fácil de lembrar.",
-      Alimentação: "O plano alimentar é o pilar que mais impacta o resultado. Identifique o momento do dia em que é mais difícil seguir — esse é o ponto a trabalhar.",
-      Sono: "O sono está comprometendo sua recuperação e regulação hormonal. Tente antecipar o horário de dormir em 30 minutos esta semana.",
-      Treino: "O treino foi o pilar mais fraco esta semana. Mesmo uma sessão curta já faz diferença — comece com o que for possível."
-    };
-
-    const yn = v => v === "sim" ? "✅ Sim" : v === "nao" ? "❌ Não" : "—";
+    const score = calcScore(a);
+    const { composicao, bemestar, consist, overall } = score;
     const hoje = new Date().toLocaleDateString("pt-BR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
-    const buildReport = () => {
-      const apoMap = { ate22:"até 22h ✅", "22meia":"entre 22h e meia-noite ⚠️", apos:"após meia-noite ❌" };
-      const hMap   = { "7a9":"7 a 9h ✅", menos7:"menos de 7h ❌", mais9:"mais de 9h ⚠️" };
-      const treMap = { zero:"❌ Nenhuma", menos3:"⚡ Menos de 3x", "3x":"✅ 3x", mais3:"🔥 Mais de 3x" };
-      const intMap = { leve:"😌 Leve", moderada:"💪 Moderada", intensa:"🔥 Intensa" };
-      const apMap  = { reduziu:"📉 Reduziu", controlado:"➡️ Controlado", aumentou:"📈 Aumentou" };
-      const papMap = { limpo:"✅ Não ficou sujo", pouco:"⚠️ Pouco sujo", muito:"❌ Muito sujo" };
-      const supls  = [...(a.suplementos||[]), a.outrosSupl?.trim()].filter(Boolean).join(", ") || "Nenhum informado";
 
-      const lines = [
+    const buildReport = () => {
+      const tri = { melhor:"✅ Melhor", igual:"➡️ Igual", pior:"🔴 Pior", folgada:"✅ Mais folgada", igual_:"➡️ Igual", apertada:"🔴 Mais apertada", firme:"💪 Mais firme", flacido:"🔴 Mais flácido" };
+      const fmt = v => v || "—";
+      return [
         `📋 *CHECK-IN SEMANAL*`,
         `📅 ${hoje}`,
         ``,
         `━━━━━━━━━━━━━━━━━━━`,
-        `💧 *HIDRATAÇÃO*`,
-        `Meta de água batida: ${yn(a.agua)}`,
+        `⚖️ *PESO E MEDIDAS*`,
+        `Peso: ${fmt(a.peso)} kg`,
+        `Abdome: ${fmt(a.abdome)} cm`,
+        `Quadril: ${fmt(a.quadril)} cm`,
+        `Coxa: ${fmt(a.coxa)} cm`,
         ``,
-        `🥩 *ALIMENTAÇÃO*`,
-        `Plano alimentar ≥90%: ${yn(a.plano)}`,
-        a.dificuldade?.trim() ? `Dificuldade relatada: "${a.dificuldade.trim()}"` : `Sem dificuldades relatadas.`,
-        `Apetite: ${apMap[a.apetite] || "—"}`,
+        `👗 *COMPOSIÇÃO CORPORAL*`,
+        `Roupa: ${{ folgada:"✅ Mais folgada", igual:"➡️ Igual", apertada:"🔴 Mais apertada" }[a.roupa] || "—"}`,
+        `Corpo: ${{ firme:"💪 Mais firme", igual:"➡️ Igual", flacido:"🔴 Mais flácido" }[a.corpo] || "—"}`,
         ``,
-        `📊 *SINAIS DO CORPO*`,
-        `Cocô ≥1x/dia: ${yn(a.coco)}`,
-        `Papel higiênico: ${papMap[a.papel] || "—"}`,
+        `⚡ *BEM-ESTAR*`,
+        `Energia: ${{ melhor:"✅ Melhor", igual:"➡️ Igual", pior:"🔴 Pior" }[a.energia] || "—"}`,
+        `Disposição Física: ${{ melhor:"✅ Melhor", igual:"➡️ Igual", pior:"🔴 Pior" }[a.disposicao] || "—"}`,
+        `Clareza Mental: ${{ melhor:"✅ Melhor", igual:"➡️ Igual", pior:"🔴 Pior" }[a.clareza] || "—"}`,
+        `Sono: ${{ melhor:"✅ Melhor", igual:"➡️ Igual", pior:"🔴 Pior" }[a.sono] || "—"}`,
         ``,
-        `😴 *SONO*`,
-        `Início do sono: ${apoMap[a.inicioSono] || "—"}`,
-        `Horas dormidas: ${hMap[a.horasDormir] || "—"}`,
-        `Dormiu direto: ${yn(a.dormidoDireto)}`,
+        `🎯 *CONSISTÊNCIA*`,
+        `${a.consistencia ?? "—"}/10`,
         ``,
-        `🏋️ *TREINO*`,
-        `Musculação: ${treMap[a.musculacao] || "—"}`,
-        `Aeróbico: ${treMap[a.aerobico] || "—"}`,
-        `Intensidade: ${intMap[a.intensidade] || "—"}`,
+        `🏆 *PRINCIPAL VITÓRIA*`,
+        a.vitoria?.trim() || "Não informado",
         ``,
-        `💊 *SUPLEMENTOS*`,
-        supls,
-        ``,
-        a.medicacoes?.trim() ? `💊 *MEDICAÇÕES*\n${a.medicacoes.trim()}` : ``,
-        ``,
-        a.ajuda?.trim() ? `💬 *MENSAGEM AO MÉDICO*\n"${a.ajuda.trim()}"` : ``,
+        `⚠️ *PRINCIPAL DIFICULDADE*`,
+        a.dificuldade?.trim() || "Não informado",
         ``,
         `━━━━━━━━━━━━━━━━━━━`,
-        `⭐ *SCORE DA SEMANA*`,
-        `💧 Hidratação:  ${hydration}/100`,
-        `🥩 Alimentação: ${nutrition}/100`,
-        `😴 Sono:        ${sleep}/100`,
-        `🏋️ Treino:      ${training}/100`,
-        ``,
-        `📊 *Score geral: ${overall}/100*`,
-        ``,
-        `_Enviado pelo app Clube Anti Efeito Sanfona_`,
-      ].filter(l => l !== undefined);
-
-      return lines.join("\n");
+        `📊 Score geral: ${overall}/100`,
+      ].join("\n");
     };
 
-    const sendReport = () => {
-      const msg = buildReport();
-      const url = `https://wa.me/5511943215326?text=${encodeURIComponent(msg)}`;
-      window.open(url, "_blank");
+    const waUrl = `https://wa.me/5511943215326?text=${encodeURIComponent(buildReport())}`;
+    const pillars = [{l:"Composição",v:composicao,e:"👗"},{l:"Bem-estar",v:bemestar,e:"⚡"},{l:"Consistência",v:consist,e:"🎯"}];
+    const weakest = pillars.reduce((a,b) => b.v < a.v ? b : a);
+    const insightMap = {
+      "Composição": "Sua composição ainda não se refletiu nas roupas ou no corpo. Continue — o resultado físico geralmente aparece após 3-4 semanas de consistência.",
+      "Bem-estar": "Sua energia, disposição, clareza ou sono estão comprometidos. Esses sinais geralmente indicam estresse, hidratação insuficiente ou sono de má qualidade.",
+      "Consistência": "A consistência foi o ponto mais fraco essa semana. Identifique o momento específico em que o plano quebrou — esse é o ponto a trabalhar."
     };
 
     return (
-      <div style={{ padding:"28px 24px", overflowY:"auto", height:"100%", boxSizing:"border-box" }}>
-        <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:"0.15em", textTransform:"uppercase", marginBottom:24 }}>RESULTADO DA SEMANA</div>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:28 }}>
-          <div style={{ position:"relative", marginBottom:14 }}>
-            <Ring value={overall} size={140} stroke={11} />
-            <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontSize:38, fontWeight:800, color:scoreColor(overall), fontFamily:"'Montserrat',sans-serif" }}>{overall}</span>
-              <span style={{ fontSize:11, color:C.muted, fontWeight:600 }}>SCORE</span>
+      <div style={{ height:"100%", overflowY:"auto", paddingBottom:100 }}>
+        <div style={{ padding:"30px 24px 0" }}>
+          <div style={{ fontSize:10, color:C.muted, fontWeight:700, letterSpacing:"0.2em", textTransform:"uppercase", marginBottom:20 }}>Check-in concluído</div>
+          <div style={{ display:"flex", alignItems:"center", gap:20, marginBottom:28 }}>
+            <div style={{ position:"relative", flexShrink:0 }}>
+              <Ring value={overall} size={90} stroke={9} />
+              <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <span style={{ fontSize:24, fontWeight:800, color:scoreColor(overall), fontFamily:"'Montserrat',sans-serif" }}>{overall}</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontFamily:"'Montserrat',sans-serif", fontSize:22, fontWeight:800, color:C.text, lineHeight:1.2 }}>
+                {overall>=80?"Semana excelente! 🔥":overall>=60?"Boa semana! 👍":"Semana de aprendizado 💡"}
+              </div>
+              <div style={{ fontSize:14, color:C.muted, marginTop:4 }}>Score geral</div>
             </div>
           </div>
-          <p style={{ color:C.text, fontSize:16, textAlign:"center", lineHeight:1.65, margin:0, maxWidth:270 }}>
-            {isGreat ? "Semana impecável. Você está construindo algo real — continue assim."
-            : isOk   ? "Boa semana com espaço para evoluir. Veja qual pilar precisa de atenção."
-            :           "Essa semana foi difícil. Reconheça o esforço — e vamos conversar."}
-          </p>
-          {!isGreat && (
-            <div style={{ marginTop:16, padding:"14px 16px", borderRadius:14, background:C.blueDim,
-              border:`1px solid ${C.blue}40`, maxWidth:300, textAlign:"left" }}>
-              <div style={{ fontSize:12, color:C.blue, fontWeight:700, marginBottom:4, fontFamily:"'Montserrat',sans-serif" }}>
-                💡 Foco desta semana — {weakest.e} {weakest.l}
+
+          {/* Pillar scores */}
+          <div style={{ background:C.card, borderRadius:18, padding:"18px 20px", border:`1px solid ${C.border}`, marginBottom:16 }}>
+            {pillars.map(({l,v,e}) => (
+              <div key={l} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12, lastChild:{marginBottom:0} }}>
+                <span style={{fontSize:18,width:24,textAlign:"center"}}>{e}</span>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                    <span style={{fontSize:14,color:C.text,fontWeight:600}}>{l}</span>
+                    <span style={{fontSize:14,color:scoreColor(v),fontWeight:700}}>{v}</span>
+                  </div>
+                  <div style={{height:6,background:C.border,borderRadius:99}}>
+                    <div style={{height:6,width:`${v}%`,background:scoreColor(v),borderRadius:99,transition:"width 0.8s ease"}} />
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize:15, color:C.muted, lineHeight:1.55 }}>{insightMap[weakest.l]}</div>
+            ))}
+          </div>
+
+          {/* Insight */}
+          <div style={{ background:C.goldDim, borderRadius:16, padding:"16px 18px", border:`1px solid ${C.gold}30`, marginBottom:20 }}>
+            <div style={{ fontSize:13, color:C.gold, fontWeight:700, marginBottom:6 }}>💡 Foco desta semana</div>
+            <div style={{ fontSize:15, color:C.text, lineHeight:1.6 }}>{insightMap[weakest.l]}</div>
+          </div>
+
+          {/* Vitória */}
+          {a.vitoria?.trim() && (
+            <div style={{ background:C.green+"15", borderRadius:16, padding:"14px 18px", border:`1px solid ${C.green}40`, marginBottom:12 }}>
+              <div style={{ fontSize:12, color:C.green, fontWeight:700, marginBottom:4 }}>🏆 SUA VITÓRIA</div>
+              <div style={{ fontSize:15, color:C.text, lineHeight:1.5 }}>"{a.vitoria.trim()}"</div>
             </div>
           )}
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
-          {pillars.map(p=>(
-            <div key={p.l} style={{ background:C.card, borderRadius:18, padding:"20px 12px", border:`1px solid ${C.border}`, display:"flex", flexDirection:"column", alignItems:"center", gap:10 }}>
-              <div style={{ position:"relative" }}>
-                <Ring value={p.v} size={72} stroke={7} />
-                <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}><span style={{fontSize:20}}>{p.e}</span></div>
-              </div>
-              <div style={{textAlign:"center"}}>
-                <div style={{ fontSize:22, fontWeight:800, color:scoreColor(p.v), fontFamily:"'Montserrat',sans-serif" }}>{p.v}</div>
-                <div style={{ fontSize:10, color:C.muted, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em" }}>{p.l}</div>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        {/* Send report button — always shown */}
-        <div style={{ marginBottom:14 }}>
-          <button onClick={sendReport} style={{
-            width:"100%", padding:"16px", borderRadius:16, border:"none",
-            background:"#25D366", color:"#fff", fontSize:15, fontWeight:700,
-            cursor:"pointer", fontFamily:"'Montserrat',sans-serif",
+        {/* WhatsApp button */}
+        <div style={{ padding:"20px 24px 12px" }}>
+          <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{
             display:"flex", alignItems:"center", justifyContent:"center", gap:10,
-            boxShadow:"0 4px 16px #25D36640",
-          }}>
-            <span style={{fontSize:18}}>📤</span> Enviar relatório à secretária
-          </button>
-          <p style={{ fontSize:12, color:C.muted, textAlign:"center", marginTop:8, lineHeight:1.5 }}>
-            Abre o WhatsApp com o resumo completo do seu check-in para anexar ao seu prontuário.
-          </p>
+            padding:"18px", borderRadius:18, background:"#25D366",
+            color:"#fff", fontSize:16, fontWeight:700, textDecoration:"none",
+            fontFamily:"'Montserrat',sans-serif", marginBottom:12,
+          }}>💬 Enviar relatório para a secretária</a>
+          <button onClick={restart} style={{
+            width:"100%", padding:"14px", borderRadius:16, border:`2px solid ${C.border}`,
+            background:"transparent", color:C.muted, fontSize:14, fontWeight:600,
+            cursor:"pointer", fontFamily:"inherit",
+          }}>↺ Novo check-in</button>
         </div>
-
-        {!isOk && (
-          <div style={{marginBottom:14}}>
-            <a href={WA} target="_blank" rel="noopener noreferrer" style={{ display:"block", padding:"15px", borderRadius:16, background:C.red+"22", border:`1px solid ${C.red}40`, color:C.red, fontSize:14, fontWeight:700, textAlign:"center", textDecoration:"none", fontFamily:"inherit" }}>
-              ⚠️ Solicitar suporte da equipe
-            </a>
-          </div>
-        )}
-        <button onClick={restart} style={{ width:"100%", padding:"14px", borderRadius:16, border:`2px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>↺ Novo check-in</button>
       </div>
     );
   }
-
   // Already completed this week
   if (completedThisWeek && step === 0 && !done) {
     return (
@@ -1129,7 +1140,7 @@ function CheckInTab({ onScoreSaved, lastScore }) {
                   </div>
                 </div>
                 <div style={{ flex:1 }}>
-                  {[["💧",lastScore.hydration],["🥩",lastScore.nutrition],["😴",lastScore.sleep],["🏋️",lastScore.training]].map(([e,v],i)=>(
+                  {[["👗",lastScore.composicao],["⚡",lastScore.bemestar],["🎯",lastScore.consist]].map(([e,v],i)=>(
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
                       <span style={{fontSize:14}}>{e}</span>
                       <div style={{ flex:1, height:5, background:C.border, borderRadius:99 }}>
@@ -1189,7 +1200,7 @@ function CheckInTab({ onScoreSaved, lastScore }) {
         </div>
       </div>
       <div style={{ flex:1, padding:"28px 24px 8px", overflowY:"auto", display:"flex", flexDirection:"column", gap:16 }}>
-        <StepContent id={curId} a={a} set={set} toggle={toggle} />
+        <StepContent id={curId} a={a} set={set} />
       </div>
       <div style={{ padding:"12px 24px 28px", flexShrink:0, display:"flex", flexDirection:"column", gap:10 }}>
         <button onClick={next} disabled={!ok} style={{
